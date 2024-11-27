@@ -13,6 +13,16 @@ from keras.layers.activation import LeakyReLU
 from keras.optimizers import Adam
 
 
+# Import date and stringify it for the folder name.
+from datetime import datetime
+
+date = datetime.now()
+date = date.strftime("%Y_%m_%d_%H_%M_%S")
+
+import os
+os.makedirs('../images/' + date)
+
+
 def load_data():
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train = (x_train.astype('float32') - 127.5) / 227.5
@@ -76,7 +86,7 @@ def plot_generated_images(epoch, generator, examples=100, dim=(10,10), figsize=(
         plt.axis('off')
 
     plt.tight_layout()
-    plt.savefig('../images/gan_generated_image_%d.png' % epoch)
+    plt.savefig('../images/' + date +'/gan_generated_image_%d.png' % epoch)
 
 
 def training(epochs=1, batch_size=128):
@@ -89,8 +99,16 @@ def training(epochs=1, batch_size=128):
     discriminator = create_discriminator()
     gan = create_gan(discriminator, generator)
 
+
+    diss_loss = []
+    gan_loss = []
+    epoch_counter = [i for i in range(epochs)]
+
     for e in range(1, epochs + 1):
         print("Epoch %d" % e)
+
+        ganloss = 0
+        dissloss = 0
 
         for _ in tqdm(range(batch_size)):
             # generate random noise as an input to initialize the generator
@@ -111,7 +129,7 @@ def training(epochs=1, batch_size=128):
 
             # Pre-train discriminator on fake and real data before starting the gan.
             discriminator.trainable = True
-            discriminator.train_on_batch(X, y_dis)
+            dissloss = discriminator.train_on_batch(X, y_dis)
 
             # Tricking the noised input of the Generator as real data
             noise = np.random.normal(0, 1, [batch_size, 100])
@@ -123,11 +141,16 @@ def training(epochs=1, batch_size=128):
 
             # training the GAN by alternating the training of the Discriminator
             # and training the chained GAN model with Discriminator’s weights freezed.
-            gan.train_on_batch(noise, y_gen)
+            ganloss = gan.train_on_batch(noise, y_gen)
+
+        gan_loss.append(ganloss)
+        diss_loss.append(dissloss)
 
         # Plot generated images.
         if e == 1 or e % 20 == 0:
             plot_generated_images(e, generator)
+
+    return gan_loss, diss_loss, epoch_counter
 
 
 
@@ -156,8 +179,17 @@ def main():
     gan.summary()
 
     # Start training.
-    training(200, 128)
+    (gan_loss, diss_loss, epoch_counter) = training(200, 128)
 
+    plt.figure(figsize=(8, 6))
+    plt.plot(epoch_counter, gan_loss, label="GAN Loss", marker="o")
+    plt.plot(epoch_counter, diss_loss, label="Discriminator Loss", marker="s")
+    plt.title("Loss vs. Epoch")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 if __name__ == '__main__':
     main()
